@@ -77,11 +77,33 @@
 
   <script src="https://cdn.jsdelivr.net/npm/@ffmpeg/ffmpeg@0.12.10/dist/umd/ffmpeg.min.js"></script>
   <script>
+    // Check if FFmpeg is loaded
+    if (typeof FFmpeg === 'undefined') {
+      document.getElementById('status').textContent = 'Fehler: FFmpeg.wasm konnte nicht geladen werden. Überprüfen Sie Ihre Internetverbindung oder Browser-Einstellungen.';
+      throw new Error('FFmpeg not defined');
+    }
+
     const { createFFmpeg, fetchFile } = FFmpeg;
     const ffmpeg = createFFmpeg({ log: true });
     let introImage = null;
     let additionalImages = [];
     const defaultIntroImage = 'data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAACklEQVR4nGMAAQAABQABDQottAAAAABJRU5ErkJggg==';
+
+    // Check SharedArrayBuffer on page load
+    window.addEventListener('load', () => {
+      if (typeof SharedArrayBuffer === 'undefined') {
+        document.getElementById('status').textContent = 'SharedArrayBuffer nicht verfügbar. Stellen Sie sicher, dass Cloudflare die Header "Cross-Origin-Opener-Policy: same-origin" und "Cross-Origin-Embedder-Policy: require-corp" korrekt setzt.';
+      } else {
+        document.getElementById('status').textContent = 'SharedArrayBuffer verfügbar.';
+      }
+      const savedIntro = localStorage.getItem('introImage');
+      if (savedIntro) {
+        introImage = savedIntro;
+        const preview = document.getElementById('introPreview');
+        preview.src = savedIntro;
+        preview.classList.remove('hidden');
+      }
+    });
 
     async function loadFFmpeg() {
       try {
@@ -98,17 +120,6 @@
         throw e;
       }
     }
-
-    // Load persisted intro image from localStorage
-    window.addEventListener('load', () => {
-      const savedIntro = localStorage.getItem('introImage');
-      if (savedIntro) {
-        introImage = savedIntro;
-        const preview = document.getElementById('introPreview');
-        preview.src = savedIntro;
-        preview.classList.remove('hidden');
-      }
-    });
 
     document.getElementById('installBtn').addEventListener('click', () => {
       if ('BeforeInstallPromptEvent' in window) {
