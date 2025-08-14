@@ -1,7 +1,7 @@
 {
-  "name": "Preisknaller – Zoom & Slideshow zu MP4",
+  "name": "Preisknaller – Zoom & Slideshow zu WebM",
   "short_name": "Zoom Slideshow",
-  "description": "Erstellt MP4-Videos mit Zoom-Intro und Ken-Burns-Effekt aus Bildern",
+  "description": "Erstellt WebM-Videos mit Zoom-Intro und Ken-Burns-Effekt aus Bildern",
   "start_url": "/Slideshow/",
   "display": "standalone",
   "background_color": "#ffffff",
