@@ -109,4 +109,147 @@
     document.getElementById('introImage').addEventListener('change', (e) => {
       const file = e.target.files[0];
       if (file) {
-        const reader = new FileReader
+        const reader = new FileReader();
+        reader.onload = () => {
+          introImage = reader.result;
+          localStorage.setItem('introImage', introImage);
+          const preview = document.getElementById('introPreview');
+          preview.src = introImage;
+          preview.classList.remove('hidden');
+        };
+        reader.readAsDataURL(file);
+      }
+    });
+
+    document.getElementById('additionalImages').addEventListener('change', (e) => {
+      additionalImages = Array.from(e.target.files).slice(0, 10);
+      const previews = document.getElementById('imagePreviews');
+      previews.innerHTML = '';
+      additionalImages.forEach((file, index) => {
+        const img = document.createElement('img');
+        img.src = URL.createObjectURL(file);
+        img.classList.add('preview-img');
+        img.alt = `Bild ${index + 1}`;
+        previews.appendChild(img);
+      });
+    });
+
+    document.getElementById('clearBtn').addEventListener('click', () => {
+      introImage = null;
+      additionalImages = [];
+      localStorage.removeItem('introImage');
+      document.getElementById('introImage').value = '';
+      document.getElementById('additionalImages').value = '';
+      document.getElementById('introPreview').classList.add('hidden');
+      document.getElementById('imagePreviews').innerHTML = '';
+      document.getElementById('downloadSection').classList.add('hidden');
+      document.getElementById('status').textContent = 'Auswahl geleert.';
+    });
+
+    document.getElementById('renderBtn').addEventListener('click', async () => {
+      const status = document.getElementById('status');
+      status.textContent = 'Vorbereiten des Videos...';
+      try {
+        const resolution = document.getElementById('resolution').value.split('x');
+        const framerate = parseInt(document.getElementById('framerate').value);
+        const width = parseInt(resolution[0]);
+        const height = parseInt(resolution[1]);
+        const durationPerImage = 2; // 2 seconds per image
+
+        const images = [(introImage || defaultIntroImage), ...additionalImages];
+        if (images.length === 1 && !introImage) {
+          status.textContent = 'Bitte laden Sie mindestens ein Bild hoch.';
+          return;
+        }
+
+        // Set up canvas
+        const canvas = document.getElementById('canvas');
+        canvas.width = width;
+        canvas.height = height;
+        const ctx = canvas.getContext('2d');
+
+        // Set up MediaRecorder
+        const stream = canvas.captureStream(framerate);
+        const recordedChunks = [];
+        const recorder = new MediaRecorder(stream, { mimeType: 'video/webm; codecs=vp9' });
+        recorder.ondataavailable = (e) => {
+          if (e.data.size > 0) recordedChunks.push(e.data);
+        };
+        recorder.onstop = () => {
+          const blob = new Blob(recordedChunks, { type: 'video/webm' });
+          const url = URL.createObjectURL(blob);
+          const downloadLink = document.getElementById('downloadLink');
+          downloadLink.href = url;
+          downloadLink.download = 'slideshow.webm';
+          document.getElementById('downloadSection').classList.remove('hidden');
+          status.textContent = 'WebM erfolgreich erstellt!';
+        };
+
+        // Load images
+        status.textContent = 'Lade Bilder...';
+        const imageObjects = await Promise.all(
+          images.map((src) => {
+            return new Promise((resolve) => {
+              const img = new Image();
+              img.src = src;
+              img.onload = () => resolve(img);
+              img.onerror = () => {
+                status.textContent = 'Fehler beim Laden eines Bildes.';
+                throw new Error('Image loading failed');
+              };
+            });
+          })
+        );
+
+        // Render video
+        status.textContent = 'Rendern des Videos...';
+        recorder.start();
+
+        for (let i = 0; i < imageObjects.length; i++) {
+          const img = imageObjects[i];
+          const isIntro = i === 0;
+          const zoomStart = isIntro ? 1 : 1;
+          const zoomEnd = isIntro ? 1.2 : 1.05; // Stronger zoom for intro
+          const frames = durationPerImage * framerate;
+          const zoomStep = (zoomEnd - zoomStart) / frames;
+
+          for (let frame = 0; frame < frames; frame++) {
+            ctx.clearRect(0, 0, width, height);
+            const zoom = zoomStart + frame * zoomStep;
+            const imgWidth = img.width * zoom;
+            const imgHeight = img.height * zoom;
+            const aspectRatio = imgWidth / imgHeight;
+            let drawWidth, drawHeight;
+
+            if (width / height > aspectRatio) {
+              drawHeight = height;
+              drawWidth = drawHeight * aspectRatio;
+            } else {
+              drawWidth = width;
+              drawHeight = drawWidth / aspectRatio;
+            }
+
+            const offsetX = (width - drawWidth) / 2;
+            const offsetY = (height - drawHeight) / 2;
+
+            ctx.drawImage(img, offsetX, offsetY, drawWidth, drawHeight);
+            await new Promise((resolve) => setTimeout(resolve, 1000 / framerate));
+          }
+        }
+
+        recorder.stop();
+      } catch (e) {
+        status.textContent = 'Fehler beim Rendern: ' + e.message;
+        console.error(e);
+      }
+    });
+
+    if ('serviceWorker' in navigator) {
+      navigator.serviceWorker.register('/Slideshow/service-worker.js').catch((e) => {
+        console.error('Service Worker registration failed:', e);
+        document.getElementById('status').textContent = 'Service Worker konnte nicht registriert werden. Offline-Modus ist eingeschränkt.';
+      });
+    }
+  </script>
+</body>
+</html>
