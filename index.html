@@ -25,14 +25,14 @@
 
     <div class="mb-4">
       <label class="block font-semibold">1) Erstes Bild (Zoom-Intro, fest eingebaut):</label>
-      <input type="file" id="introImage" accept="image/*" class="mt-1">
-      <p class="text-sm text-gray-600">Standardbild wird verwendet, wenn nichts hochgeladen.</p>
+      <input type="file" id="introImage" accept="image/png,image/jpeg" class="mt-1">
+      <p class="text-sm text-gray-600">Nur PNG oder JPEG. Standardbild wird verwendet, wenn nichts hochgeladen.</p>
       <img id="introPreview" class="preview-img hidden" alt="Intro Vorschau">
     </div>
 
     <div class="mb-4">
-      <label class="block font-semibold">2) Bis zu 10 weitere Bilder:</label>
-      <input type="file" id="additionalImages" accept="image/*" multiple class="mt-1">
+      <label class="block font-semibold">2) Bis zu 10 weitere Bilder (PNG/JPEG):</label>
+      <input type="file" id="additionalImages" accept="image/png,image/jpeg" multiple class="mt-1">
       <div id="imagePreviews" class="flex flex-wrap"></div>
     </div>
 
@@ -90,7 +90,6 @@
         preview.src = savedIntro;
         preview.classList.remove('hidden');
       }
-      // Check MediaRecorder support
       if (!window.MediaRecorder) {
         document.getElementById('status').textContent = 'Fehler: MediaRecorder wird von diesem Browser nicht unterstützt.';
       }
@@ -113,6 +112,10 @@
     document.getElementById('introImage').addEventListener('change', (e) => {
       const file = e.target.files[0];
       if (file) {
+        if (!['image/png', 'image/jpeg'].includes(file.type)) {
+          document.getElementById('status').textContent = 'Fehler: Nur PNG- oder JPEG-Bilder sind erlaubt.';
+          return;
+        }
         const reader = new FileReader();
         reader.onload = () => {
           introImage = reader.result;
@@ -120,6 +123,7 @@
           const preview = document.getElementById('introPreview');
           preview.src = introImage;
           preview.classList.remove('hidden');
+          document.getElementById('status').textContent = 'Intro-Bild geladen.';
         };
         reader.onerror = () => {
           document.getElementById('status').textContent = 'Fehler beim Laden des Intro-Bildes.';
@@ -132,6 +136,13 @@
       additionalImages = Array.from(e.target.files).slice(0, 10);
       const previews = document.getElementById('imagePreviews');
       previews.innerHTML = '';
+      additionalImages = additionalImages.filter((file) => {
+        if (!['image/png', 'image/jpeg'].includes(file.type)) {
+          document.getElementById('status').textContent = `Fehler: Bild "${file.name}" ist kein PNG oder JPEG.`;
+          return false;
+        }
+        return true;
+      });
       additionalImages.forEach((file, index) => {
         const img = document.createElement('img');
         img.src = URL.createObjectURL(file);
@@ -139,6 +150,7 @@
         img.alt = `Bild ${index + 1}`;
         previews.appendChild(img);
       });
+      document.getElementById('status').textContent = `Geladen: ${additionalImages.length} zusätzliche Bilder.`;
     });
 
     document.getElementById('clearBtn').addEventListener('click', () => {
@@ -157,7 +169,6 @@
       const status = document.getElementById('status');
       status.textContent = 'Vorbereiten des Videos...';
       try {
-        // Check MediaRecorder support
         if (!window.MediaRecorder) {
           throw new Error('MediaRecorder wird von diesem Browser nicht unterstützt.');
         }
@@ -166,9 +177,9 @@
         const framerate = parseInt(document.getElementById('framerate').value);
         const width = parseInt(resolution[0]);
         const height = parseInt(resolution[1]);
-        const durationPerImage = 2; // 2 seconds per image
+        const durationPerImage = 2;
 
-        const images = [(introImage || defaultIntroImage), ...additionalImages];
+        const images = [(introImage || defaultIntroImage), ...additionalImages.map(file => URL.createObjectURL(file))];
         if (images.length === 1 && !introImage) {
           status.textContent = 'Bitte laden Sie mindestens ein Bild hoch.';
           return;
@@ -217,30 +228,41 @@
           console.error('MediaRecorder error:', e);
         };
 
-        // Load images
+        // Load images with validation
         status.textContent = 'Lade Bilder...';
-        const imageObjects = await Promise.all(
-          images.map((src, index) => {
-            return new Promise((resolve, reject) => {
+        const validImages = [];
+        for (let i = 0; i < images.length; i++) {
+          try {
+            const img = await new Promise((resolve, reject) => {
               const img = new Image();
-              img.src = src;
+              img.src = images[i];
               img.onload = () => {
-                status.textContent = `Bild ${index + 1} geladen.`;
+                status.textContent = `Bild ${i + 1} geladen.`;
                 resolve(img);
               };
               img.onerror = () => {
-                reject(new Error(`Fehler beim Laden von Bild ${index + 1}`));
+                status.textContent = `Warnung: Bild ${i + 1} konnte nicht geladen werden, wird übersprungen.`;
+                reject(new Error(`Bild ${i + 1} fehlgeschlagen`));
               };
             });
-          })
-        );
+            validImages.push(img);
+          } catch (e) {
+            console.warn(e);
+            continue;
+          }
+        }
+
+        if (validImages.length === 0) {
+          status.textContent = 'Fehler: Keine gültigen Bilder zum Rendern vorhanden.';
+          return;
+        }
 
         // Render video
         status.textContent = 'Rendern des Videos...';
         recorder.start();
 
-        for (let i = 0; i < imageObjects.length; i++) {
-          const img = imageObjects[i];
+        for (let i = 0; i < validImages.length; i++) {
+          const img = validImages[i];
           const isIntro = i === 0;
           const zoomStart = isIntro ? 1 : 1;
           const zoomEnd = isIntro ? 1.2 : 1.05;
