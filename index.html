@@ -1,0 +1,230 @@
+<script type="text/javascript">
+        var gk_isXlsx = false;
+        var gk_xlsxFileLookup = {};
+        var gk_fileData = {};
+        function filledCell(cell) {
+          return cell !== '' && cell != null;
+        }
+        function loadFileData(filename) {
+        if (gk_isXlsx && gk_xlsxFileLookup[filename]) {
+            try {
+                var workbook = XLSX.read(gk_fileData[filename], { type: 'base64' });
+                var firstSheetName = workbook.SheetNames[0];
+                var worksheet = workbook.Sheets[firstSheetName];
+
+                // Convert sheet to JSON to filter blank rows
+                var jsonData = XLSX.utils.sheet_to_json(worksheet, { header: 1, blankrows: false, defval: '' });
+                // Filter out blank rows (rows where all cells are empty, null, or undefined)
+                var filteredData = jsonData.filter(row => row.some(filledCell));
+
+                // Heuristic to find the header row by ignoring rows with fewer filled cells than the next row
+                var headerRowIndex = filteredData.findIndex((row, index) =>
+                  row.filter(filledCell).length >= filteredData[index + 1]?.filter(filledCell).length
+                );
+                // Fallback
+                if (headerRowIndex === -1 || headerRowIndex > 25) {
+                  headerRowIndex = 0;
+                }
+
+                // Convert filtered JSON back to CSV
+                var csv = XLSX.utils.aoa_to_sheet(filteredData.slice(headerRowIndex)); // Create a new sheet from filtered array of arrays
+                csv = XLSX.utils.sheet_to_csv(csv, { header: 1 });
+                return csv;
+            } catch (e) {
+                console.error(e);
+                return "";
+            }
+        }
+        return gk_fileData[filename] || "";
+        }
+        </script><!DOCTYPE html>
+<html lang="de">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Preisknaller – Zoom & Slideshow zu MP4</title>
+  <link href="https://cdn.jsdelivr.net/npm/tailwindcss@2.2.19/dist/tailwind.min.css" rel="stylesheet">
+  <link rel="manifest" href="manifest.json">
+  <meta name="theme-color" content="#ffffff">
+  <style>
+    .preview-img { max-width: 100px; max-height: 100px; object-fit: cover; margin: 5px; }
+    .status { white-space: pre-wrap; }
+  </style>
+</head>
+<body class="bg-gray-100 p-4 font-sans">
+  <div class="max-w-md mx-auto bg-white p-6 rounded-lg shadow-md">
+    <h1 class="text-2xl font-bold mb-4">Preisknaller – Zoom & Slideshow zu MP4</h1>
+
+    <div class="mb-4">
+      <button id="installBtn" class="bg-blue-500 text-white px-4 py-2 rounded hover:bg-blue-600">App installieren</button>
+      <p class="text-sm text-gray-600">PWA – offline nutzbar</p>
+    </div>
+
+    <div class="mb-4">
+      <label class="block font-semibold">1) Erstes Bild (Zoom-Intro, fest eingebaut):</label>
+      <input type="file" id="introImage" accept="image/*" class="mt-1">
+      <p class="text-sm text-gray-600">Standardbild wird verwendet, wenn nichts hochgeladen.</p>
+      <img id="introPreview" class="preview-img hidden" alt="Intro Vorschau">
+    </div>
+
+    <div class="mb-4">
+      <label class="block font-semibold">2) Bis zu 10 weitere Bilder:</label>
+      <input type="file" id="additionalImages" accept="image/*" multiple class="mt-1">
+      <div id="imagePreviews" class="flex flex-wrap"></div>
+    </div>
+
+    <div class="mb-4">
+      <label class="block font-semibold">Auflösung:</label>
+      <select id="resolution" class="border p-2 rounded w-full">
+        <option value="1280x720">1280×720 (HD)</option>
+        <option value="1920x1080">1920×1080 (Full HD)</option>
+        <option value="1080x1080">1080×1080 (Quadrat)</option>
+        <option value="1080x1920">1080×1920 (Hochformat)</option>
+      </select>
+    </div>
+
+    <div class="mb-4">
+      <label class="block font-semibold">Framerate:</label>
+      <select id="framerate" class="border p-2 rounded w-full">
+        <option value="25">25</option>
+        <option value="30">30</option>
+        <option value="60">60</option>
+      </select>
+    </div>
+
+    <div class="mb-4">
+      <p class="font-semibold">Dauer pro Bild: 2s (fix)</p>
+    </div>
+
+    <div class="mb-4">
+      <button id="renderBtn" class="bg-green-500 text-white px-4 py-2 rounded hover:bg-green-600">MP4 rendern</button>
+      <button id="clearBtn" class="bg-red-500 text-white px-4 py-2 rounded hover:bg-red-600 ml-2">Auswahl leeren</button>
+    </div>
+
+    <div class="mb-4">
+      <p class="font-semibold">Status:</p>
+      <p id="status" class="status text-sm text-gray-600"></p>
+    </div>
+
+    <div class="mb-4 hidden" id="downloadSection">
+      <a id="downloadLink" class="bg-blue-500 text-white px-4 py-2 rounded hover:bg-blue-600">MP4 herunterladen</a>
+    </div>
+  </div>
+
+  <script src="https://cdn.jsdelivr.net/npm/@ffmpeg/ffmpeg@0.11.6/dist/ffmpeg.min.js"></script>
+  <script>
+    const { createFFmpeg, fetchFile } = FFmpeg;
+    const ffmpeg = createFFmpeg({ log: true });
+    let introImage = null;
+    let additionalImages = [];
+    const defaultIntroImage = 'data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAACklEQVR4nGMAAQAABQABDQottAAAAABJRU5ErkJggg=='; // 1x1 transparent PNG
+
+    async function loadFFmpeg() {
+      if (!ffmpeg.isLoaded()) {
+        await ffmpeg.load();
+      }
+    }
+
+    document.getElementById('installBtn').addEventListener('click', () => {
+      if ('BeforeInstallPromptEvent' in window) {
+        window.deferredPrompt?.prompt();
+      } else {
+        alert('Die App kann auf diesem Gerät installiert werden. Bitte verwenden Sie die Browseroption "Zum Startbildschirm hinzufügen".');
+      }
+    });
+
+    window.addEventListener('beforeinstallprompt', (e) => {
+      e.preventDefault();
+      window.deferredPrompt = e;
+      document.getElementById('installBtn').classList.remove('hidden');
+    });
+
+    document.getElementById('introImage').addEventListener('change', (e) => {
+      const file = e.target.files[0];
+      if (file) {
+        introImage = file;
+        const preview = document.getElementById('introPreview');
+        preview.src = URL.createObjectURL(file);
+        preview.classList.remove('hidden');
+      }
+    });
+
+    document.getElementById('additionalImages').addEventListener('change', (e) => {
+      additionalImages = Array.from(e.target.files).slice(0, 10);
+      const previews = document.getElementById('imagePreviews');
+      previews.innerHTML = '';
+      additionalImages.forEach((file, index) => {
+        const img = document.createElement('img');
+        img.src = URL.createObjectURL(file);
+        img.classList.add('preview-img');
+        img.alt = `Bild ${index + 1}`;
+        previews.appendChild(img);
+      });
+    });
+
+    document.getElementById('clearBtn').addEventListener('click', () => {
+      introImage = null;
+      additionalImages = [];
+      document.getElementById('introImage').value = '';
+      document.getElementById('additionalImages').value = '';
+      document.getElementById('introPreview').classList.add('hidden');
+      document.getElementById('imagePreviews').innerHTML = '';
+      document.getElementById('downloadSection').classList.add('hidden');
+      document.getElementById('status').textContent = 'Auswahl geleert.';
+    });
+
+    document.getElementById('renderBtn').addEventListener('click', async () => {
+      const status = document.getElementById('status');
+      status.textContent = 'Lade FFmpeg...';
+      await loadFFmpeg();
+
+      const resolution = document.getElementById('resolution').value.split('x');
+      const framerate = document.getElementById('framerate').value;
+      const width = resolution[0];
+      const height = resolution[1];
+
+      status.textContent = 'Verarbeite Bilder...';
+      const images = [(introImage || defaultIntroImage), ...additionalImages];
+      const durationPerImage = 2;
+
+      for (let i = 0; i < images.length; i++) {
+        const input = typeof images[i] === 'string' ? images[i] : images[i];
+        ffmpeg.FS('writeFile', `input${i}.png`, await fetchFile(input));
+      }
+
+      const filterComplex = [
+        `[0:v]scale=${width}:${height}:force_original_aspect_ratio=decrease,pad=${width}:${height}:(ow-iw)/2:(oh-ih)/2,zoompan=z='zoom+0.002':d=125:s=${width}x${height}:fps=${framerate}[v0]`,
+        ...images.slice(1).map((_, i) => 
+          `[${i + 1}:v]scale=${width}:${height}:force_original_aspect_ratio=decrease,pad=${width}:${height}:(ow-iw)/2:(oh-ih)/2,zoompan=z='1+0.0005':d=125:s=${width}x${height}:fps=${framerate}[v${i + 1}]`
+        ),
+        `[v0]${images.slice(1).map((_, i) => `[v${i + 1}]`).join('')}concat=n=${images.length}:v=1:a=0[v]`
+      ].join(';');
+
+      status.textContent = 'Kodiere MP4...';
+      await ffmpeg.run(
+        '-i', 'input0.png',
+        ...images.slice(1).map((_, i) => ['-i', `input${i + 1}.png`]).flat(),
+        '-filter_complex', filterComplex,
+        '-map', '[v]',
+        '-c:v', 'libx264',
+        '-pix_fmt', 'yuv420p',
+        '-r', framerate,
+        '-t', (images.length * durationPerImage).toString(),
+        'output.mp4'
+      );
+
+      const data = ffmpeg.FS('readFile', 'output.mp4');
+      const url = URL.createObjectURL(new Blob([data.buffer], { type: 'video/mp4' }));
+      const downloadLink = document.getElementById('downloadLink');
+      downloadLink.href = url;
+      downloadLink.download = 'slideshow.mp4';
+      document.getElementById('downloadSection').classList.remove('hidden');
+      status.textContent = 'MP4 erfolgreich erstellt!';
+    });
+
+    if ('serviceWorker' in navigator) {
+      navigator.serviceWorker.register('service-worker.js');
+    }
+  </script>
+</body>
+</html>
