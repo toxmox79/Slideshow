@@ -3,20 +3,21 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>Preisknaller – Zoom & Slideshow zu WebM</title>
+  <title>Preisknaller – Zoom & Slideshow zu MOV</title>
   <link href="https://cdn.jsdelivr.net/npm/tailwindcss@2.2.19/dist/tailwind.min.css" rel="stylesheet">
   <link rel="manifest" href="/Slideshow/manifest.json">
   <meta name="theme-color" content="#ffffff">
+  <meta http-equiv="Cross-Origin-Opener-Policy" content="same-origin">
+  <meta http-equiv="Cross-Origin-Embedder-Policy" content="require-corp">
   <link rel="icon" href="/Slideshow/favicon.ico" type="image/x-icon">
   <style>
     .preview-img { max-width: 100px; max-height: 100px; object-fit: cover; margin: 5px; }
     .status { white-space: pre-wrap; }
-    canvas { display: none; }
   </style>
 </head>
 <body class="bg-gray-100 p-4 font-sans">
   <div class="max-w-md mx-auto bg-white p-6 rounded-lg shadow-md">
-    <h1 class="text-2xl font-bold mb-4">Preisknaller – Zoom & Slideshow zu WebM</h1>
+    <h1 class="text-2xl font-bold mb-4">Preisknaller – Zoom & Slideshow zu MOV</h1>
 
     <div class="mb-4">
       <button id="installBtn" class="bg-blue-500 text-white px-4 py-2 rounded hover:bg-blue-600">App installieren</button>
@@ -60,7 +61,7 @@
     </div>
 
     <div class="mb-4">
-      <button id="renderBtn" class="bg-green-500 text-white px-4 py-2 rounded hover:bg-green-600">WebM rendern</button>
+      <button id="renderBtn" class="bg-green-500 text-white px-4 py-2 rounded hover:bg-green-600">MOV rendern</button>
       <button id="clearBtn" class="bg-red-500 text-white px-4 py-2 rounded hover:bg-red-600 ml-2">Auswahl leeren</button>
     </div>
 
@@ -70,19 +71,57 @@
     </div>
 
     <div class="mb-4 hidden" id="downloadSection">
-      <a id="downloadLink" class="bg-blue-500 text-white px-4 py-2 rounded hover:bg-blue-600">WebM herunterladen</a>
+      <a id="downloadLink" class="bg-blue-500 text-white px-4 py-2 rounded hover:bg-blue-600">MOV herunterladen</a>
     </div>
-
-    <canvas id="canvas" style="display: none;"></canvas>
   </div>
 
+  <script src="https://cdn.jsdelivr.net/npm/@ffmpeg/ffmpeg@0.12.10/dist/umd/ffmpeg.min.js" onerror="loadFallbackFFmpeg()"></script>
   <script>
-    let introImage = null;
-    let additionalImages = [];
-    const defaultIntroImage = 'data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAACklEQVR4nGMAAQAABQABDQottAAAAABJRU5ErkJggg==';
+    // Fallback CDN for FFmpeg
+    function loadFallbackFFmpeg() {
+      const script = document.createElement('script');
+      script.src = 'https://unpkg.com/@ffmpeg/ffmpeg@0.12.10/dist/umd/ffmpeg.min.js';
+      script.onerror = () => {
+        document.getElementById('status').textContent = 'Fehler: FFmpeg.wasm konnte nicht geladen werden (beide CDNs fehlgeschlagen).';
+      };
+      document.head.appendChild(script);
+    }
 
-    // Load persisted intro image from localStorage
+    // Check FFmpeg availability
     window.addEventListener('load', () => {
+      if (typeof FFmpeg === 'undefined') {
+        document.getElementById('status').textContent = 'FFmpeg wird geladen...';
+        return;
+      }
+      initializeFFmpeg();
+    });
+
+    function initializeFFmpeg() {
+      if (typeof SharedArrayBuffer === 'undefined') {
+        document.getElementById('status').textContent = 'SharedArrayBuffer nicht verfügbar. Stellen Sie sicher, dass die Seite über HTTPS mit den Headern "Cross-Origin-Opener-Policy: same-origin" und "Cross-Origin-Embedder-Policy: require-corp" geladen wird.';
+        return;
+      }
+
+      const { createFFmpeg, fetchFile } = FFmpeg;
+      const ffmpeg = createFFmpeg({ log: true });
+      let introImage = null;
+      let additionalImages = [];
+      const defaultIntroImage = 'data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAACklEQVR4nGMAAQAABQABDQottAAAAABJRU5ErkJggg==';
+
+      async function loadFFmpeg() {
+        try {
+          if (!ffmpeg.isLoaded()) {
+            await ffmpeg.load();
+            document.getElementById('status').textContent = 'FFmpeg geladen.';
+          }
+        } catch (e) {
+          document.getElementById('status').textContent = 'Fehler beim Laden von FFmpeg: ' + e.message;
+          console.error(e);
+          throw e;
+        }
+      }
+
+      // Load persisted intro image from localStorage
       const savedIntro = localStorage.getItem('introImage');
       if (savedIntro) {
         introImage = savedIntro;
@@ -90,224 +129,151 @@
         preview.src = savedIntro;
         preview.classList.remove('hidden');
       }
-      if (!window.MediaRecorder) {
-        document.getElementById('status').textContent = 'Fehler: MediaRecorder wird von diesem Browser nicht unterstützt.';
-      } else {
-        document.getElementById('status').textContent = 'Bereit zum Rendern.';
-      }
-    });
 
-    document.getElementById('installBtn').addEventListener('click', () => {
-      if ('BeforeInstallPromptEvent' in window) {
-        window.deferredPrompt?.prompt();
-      } else {
-        alert('Die App kann auf diesem Gerät installiert werden. Bitte verwenden Sie die Browseroption "Zum Startbildschirm hinzufügen".');
-      }
-    });
-
-    window.addEventListener('beforeinstallprompt', (e) => {
-      e.preventDefault();
-      window.deferredPrompt = e;
-      document.getElementById('installBtn').classList.remove('hidden');
-    });
-
-    document.getElementById('introImage').addEventListener('change', (e) => {
-      const file = e.target.files[0];
-      if (file) {
-        if (!['image/png', 'image/jpeg'].includes(file.type)) {
-          document.getElementById('status').textContent = 'Fehler: Nur PNG- oder JPEG-Bilder sind erlaubt.';
-          return;
+      document.getElementById('installBtn').addEventListener('click', () => {
+        if ('BeforeInstallPromptEvent' in window) {
+          window.deferredPrompt?.prompt();
+        } else {
+          alert('Die App kann auf diesem Gerät installiert werden. Bitte verwenden Sie die Browseroption "Zum Startbildschirm hinzufügen".');
         }
-        const reader = new FileReader();
-        reader.onload = () => {
-          introImage = reader.result;
-          localStorage.setItem('introImage', introImage);
-          const preview = document.getElementById('introPreview');
-          preview.src = introImage;
-          preview.classList.remove('hidden');
-          document.getElementById('status').textContent = 'Intro-Bild geladen.';
-        };
-        reader.onerror = () => {
-          document.getElementById('status').textContent = 'Fehler beim Laden des Intro-Bildes.';
-        };
-        reader.readAsDataURL(file);
-      }
-    });
-
-    document.getElementById('additionalImages').addEventListener('change', (e) => {
-      additionalImages = Array.from(e.target.files).slice(0, 10);
-      const previews = document.getElementById('imagePreviews');
-      previews.innerHTML = '';
-      additionalImages = additionalImages.filter((file) => {
-        if (!['image/png', 'image/jpeg'].includes(file.type)) {
-          document.getElementById('status').textContent = `Fehler: Bild "${file.name}" ist kein PNG oder JPEG.`;
-          return false;
-        }
-        return true;
       });
-      additionalImages.forEach((file, index) => {
-        const img = document.createElement('img');
-        img.src = URL.createObjectURL(file);
-        img.classList.add('preview-img');
-        img.alt = `Bild ${index + 1}`;
-        previews.appendChild(img);
+
+      window.addEventListener('beforeinstallprompt', (e) => {
+        e.preventDefault();
+        window.deferredPrompt = e;
+        document.getElementById('installBtn').classList.remove('hidden');
       });
-      document.getElementById('status').textContent = `Geladen: ${additionalImages.length} zusätzliche Bilder.`;
-    });
 
-    document.getElementById('clearBtn').addEventListener('click', () => {
-      introImage = null;
-      additionalImages = [];
-      localStorage.removeItem('introImage');
-      document.getElementById('introImage').value = '';
-      document.getElementById('additionalImages').value = '';
-      document.getElementById('introPreview').classList.add('hidden');
-      document.getElementById('imagePreviews').innerHTML = '';
-      document.getElementById('downloadSection').classList.add('hidden');
-      document.getElementById('status').textContent = 'Auswahl geleert.';
-    });
-
-    document.getElementById('renderBtn').addEventListener('click', async () => {
-      const status = document.getElementById('status');
-      status.textContent = 'Vorbereiten des Videos...';
-      try {
-        if (!window.MediaRecorder) {
-          throw new Error('MediaRecorder wird von diesem Browser nicht unterstützt.');
-        }
-
-        const resolution = document.getElementById('resolution').value.split('x');
-        const framerate = parseInt(document.getElementById('framerate').value);
-        const width = parseInt(resolution[0]);
-        const height = parseInt(resolution[1]);
-        const durationPerImage = 2; // 2 seconds per image
-
-        const images = [(introImage || defaultIntroImage), ...additionalImages.map(file => URL.createObjectURL(file))];
-        if (images.length === 1 && !introImage) {
-          status.textContent = 'Bitte laden Sie mindestens ein Bild hoch.';
-          return;
-        }
-
-        // Set up canvas
-        const canvas = document.getElementById('canvas');
-        canvas.width = width;
-        canvas.height = height;
-        const ctx = canvas.getContext('2d');
-        if (!ctx) {
-          throw new Error('Canvas-Kontext konnte nicht erstellt werden.');
-        }
-
-        // Set up MediaRecorder
-        const stream = canvas.captureStream(framerate);
-        if (!stream) {
-          throw new Error('Canvas-Stream konnte nicht erstellt werden.');
-        }
-        const recordedChunks = [];
-        let mimeType = 'video/webm; codecs=vp9';
-        if (!MediaRecorder.isTypeSupported(mimeType)) {
-          mimeType = 'video/webm';
-          if (!MediaRecorder.isTypeSupported(mimeType)) {
-            throw new Error('Kein unterstütztes WebM-Format verfügbar.');
+      document.getElementById('introImage').addEventListener('change', (e) => {
+        const file = e.target.files[0];
+        if (file) {
+          if (!['image/png', 'image/jpeg'].includes(file.type)) {
+            document.getElementById('status').textContent = 'Fehler: Nur PNG- oder JPEG-Bilder sind erlaubt.';
+            return;
           }
+          const reader = new FileReader();
+          reader.onload = () => {
+            introImage = reader.result;
+            localStorage.setItem('introImage', introImage);
+            const preview = document.getElementById('introPreview');
+            preview.src = introImage;
+            preview.classList.remove('hidden');
+            document.getElementById('status').textContent = 'Intro-Bild geladen.';
+          };
+          reader.onerror = () => {
+            document.getElementById('status').textContent = 'Fehler beim Laden des Intro-Bildes.';
+          };
+          reader.readAsDataURL(file);
         }
-        const recorder = new MediaRecorder(stream, { mimeType });
-        recorder.ondataavailable = (e) => {
-          if (e.data.size > 0) {
-            recordedChunks.push(e.data);
-            status.textContent = `Daten empfangen (${recordedChunks.length} Chunks)...`;
+      });
+
+      document.getElementById('additionalImages').addEventListener('change', (e) => {
+        additionalImages = Array.from(e.target.files).slice(0, 10);
+        const previews = document.getElementById('imagePreviews');
+        previews.innerHTML = '';
+        additionalImages = additionalImages.filter((file) => {
+          if (!['image/png', 'image/jpeg'].includes(file.type)) {
+            document.getElementById('status').textContent = `Fehler: Bild "${file.name}" ist kein PNG oder JPEG.`;
+            return false;
           }
-        };
-        recorder.onstop = () => {
-          const blob = new Blob(recordedChunks, { type: 'video/webm' });
-          const url = URL.createObjectURL(blob);
+          return true;
+        });
+        additionalImages.forEach((file, index) => {
+          const img = document.createElement('img');
+          img.src = URL.createObjectURL(file);
+          img.classList.add('preview-img');
+          img.alt = `Bild ${index + 1}`;
+          previews.appendChild(img);
+        });
+        document.getElementById('status').textContent = `Geladen: ${additionalImages.length} zusätzliche Bilder.`;
+      });
+
+      document.getElementById('clearBtn').addEventListener('click', () => {
+        introImage = null;
+        additionalImages = [];
+        localStorage.removeItem('introImage');
+        document.getElementById('introImage').value = '';
+        document.getElementById('additionalImages').value = '';
+        document.getElementById('introPreview').classList.add('hidden');
+        document.getElementById('imagePreviews').innerHTML = '';
+        document.getElementById('downloadSection').classList.add('hidden');
+        document.getElementById('status').textContent = 'Auswahl geleert.';
+      });
+
+      document.getElementById('renderBtn').addEventListener('click', async () => {
+        const status = document.getElementById('status');
+        status.textContent = 'Lade FFmpeg...';
+        try {
+          await loadFFmpeg();
+          const resolution = document.getElementById('resolution').value.split('x');
+          const framerate = document.getElementById('framerate').value;
+          const width = resolution[0];
+          const height = resolution[1];
+
+          status.textContent = 'Verarbeite Bilder...';
+          const images = [(introImage || defaultIntroImage), ...additionalImages];
+          if (images.length === 1 && !introImage) {
+            status.textContent = 'Bitte laden Sie mindestens ein Bild hoch.';
+            return;
+          }
+
+          const validImages = [];
+          for (let i = 0; i < images.length; i++) {
+            try {
+              const input = typeof images[i] === 'string' ? images[i] : images[i];
+              const imgData = await fetchFile(input);
+              ffmpeg.FS('writeFile', `input${i}.png`, imgData);
+              validImages.push(`input${i}.png`);
+              status.textContent = `Bild ${i + 1} verarbeitet.`;
+            } catch (e) {
+              status.textContent = `Warnung: Bild ${i + 1} konnte nicht verarbeitet werden, wird übersprungen.`;
+              console.warn(e);
+            }
+          }
+
+          if (validImages.length === 0) {
+            status.textContent = 'Fehler: Keine gültigen Bilder zum Rendern vorhanden.';
+            return;
+          }
+
+          const filterComplex = validImages.map((_, i) => {
+            const isIntro = i === 0;
+            return `[${i}:v]scale=${width}:${height}:force_original_aspect_ratio=decrease,pad=${width}:${height}:(ow-iw)/2:(oh-ih)/2,zoompan=z='zoom+${isIntro ? '0.004' : '0.002'}':d=125:s=${width}x${height}:fps=${framerate}[v${i}]`;
+          }).concat(`[v0]${validImages.slice(1).map((_, i) => `[v${i + 1}]`).join('')}concat=n=${validImages.length}:v=1:a=0[v]`).join(';');
+
+          status.textContent = 'Kodiere MOV...';
+          await ffmpeg.run(
+            '-i', validImages[0],
+            ...validImages.slice(1).map((file) => ['-i', file]).flat(),
+            '-filter_complex', filterComplex,
+            '-map', '[v]',
+            '-c:v', 'libx264',
+            '-pix_fmt', 'yuv420p',
+            '-r', framerate,
+            '-t', (validImages.length * 2).toString(),
+            '-f', 'mov',
+            'output.mov'
+          );
+
+          const data = ffmpeg.FS('readFile', 'output.mov');
+          const url = URL.createObjectURL(new Blob([data.buffer], { type: 'video/quicktime' }));
           const downloadLink = document.getElementById('downloadLink');
           downloadLink.href = url;
-          downloadLink.download = 'slideshow.webm';
+          downloadLink.download = 'slideshow.mov';
           document.getElementById('downloadSection').classList.remove('hidden');
-          status.textContent = 'WebM erfolgreich erstellt!';
-        };
-        recorder.onerror = (e) => {
-          status.textContent = 'MediaRecorder-Fehler: ' + e.error.message;
-          console.error('MediaRecorder error:', e);
-        };
-
-        // Load images with validation
-        status.textContent = 'Lade Bilder...';
-        const validImages = [];
-        for (let i = 0; i < images.length; i++) {
-          try {
-            const img = await new Promise((resolve, reject) => {
-              const img = new Image();
-              img.src = images[i];
-              img.onload = () => {
-                status.textContent = `Bild ${i + 1} geladen.`;
-                resolve(img);
-              };
-              img.onerror = () => {
-                status.textContent = `Warnung: Bild ${i + 1} konnte nicht geladen werden, wird übersprungen.`;
-                reject(new Error(`Bild ${i + 1} fehlgeschlagen`));
-              };
-            });
-            validImages.push(img);
-          } catch (e) {
-            console.warn(e);
-            continue;
-          }
+          status.textContent = 'MOV erfolgreich erstellt!';
+        } catch (e) {
+          status.textContent = 'Fehler beim Rendern: ' + e.message;
+          console.error(e);
         }
-
-        if (validImages.length === 0) {
-          status.textContent = 'Fehler: Keine gültigen Bilder zum Rendern vorhanden.';
-          return;
-        }
-
-        // Render video
-        status.textContent = 'Rendern des Videos...';
-        recorder.start();
-
-        const framesPerImage = durationPerImage * framerate;
-        for (let i = 0; i < validImages.length; i++) {
-          const img = validImages[i];
-          const isIntro = i === 0;
-          const zoomStart = 1.0;
-          const zoomEnd = isIntro ? 1.5 : 1.2; // Stronger zoom for intro
-          const zoomStep = (zoomEnd - zoomStart) / framesPerImage;
-
-          for (let frame = 0; frame < framesPerImage; frame++) {
-            ctx.clearRect(0, 0, width, height);
-            const zoom = zoomStart + frame * zoomStep;
-            const imgWidth = img.width * zoom;
-            const imgHeight = img.height * zoom;
-            const aspectRatio = img.width / img.height;
-            let drawWidth, drawHeight;
-
-            if (width / height > aspectRatio) {
-              drawHeight = height / zoom;
-              drawWidth = drawHeight * aspectRatio;
-            } else {
-              drawWidth = width / zoom;
-              drawHeight = drawWidth / aspectRatio;
-            }
-
-            const offsetX = (width - drawWidth) / 2;
-            const offsetY = (height - drawHeight) / 2;
-
-            ctx.drawImage(img, offsetX, offsetY, drawWidth, drawHeight);
-            status.textContent = `Rendern: Bild ${i + 1}, Frame ${frame + 1}/${framesPerImage}`;
-            await new Promise((resolve) => requestAnimationFrame(resolve));
-          }
-        }
-
-        recorder.stop();
-      } catch (e) {
-        status.textContent = 'Fehler beim Rendern: ' + e.message;
-        console.error('Render error:', e);
-      }
-    });
-
-    if ('serviceWorker' in navigator) {
-      navigator.serviceWorker.register('/Slideshow/service-worker.js').catch((e) => {
-        console.error('Service Worker registration failed:', e);
-        document.getElementById('status').textContent = 'Service Worker konnte nicht registriert werden. Offline-Modus ist eingeschränkt.';
       });
+
+      if ('serviceWorker' in navigator) {
+        navigator.serviceWorker.register('/Slideshow/service-worker.js').catch((e) => {
+          console.error('Service Worker registration failed:', e);
+          document.getElementById('status').textContent = 'Service Worker konnte nicht registriert werden. Offline-Modus ist eingeschränkt.';
+        });
+      }
     }
   </script>
 </body>
