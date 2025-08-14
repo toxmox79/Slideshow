@@ -1,13 +1,20 @@
-addEventListener('fetch', event => {
-  event.respondWith(handleRequest(event.request));
+self.addEventListener('install', (event) => {
+  event.waitUntil(
+    caches.open('pwa-cache').then((cache) => {
+      return cache.addAll([
+        '/Slideshow/',
+        '/Slideshow/index.html',
+        'https://cdn.jsdelivr.net/npm/tailwindcss@2.2.19/dist/tailwind.min.css',
+        'https://cdn.jsdelivr.net/npm/@ffmpeg/ffmpeg@0.12.10/dist/umd/ffmpeg.min.js'
+      ]);
+    })
+  );
 });
 
-async function handleRequest(request) {
-  // Proxy the request to GitHub Pages
-  const response = await fetch(request);
-  // Create a new response with custom headers
-  const newResponse = new Response(response.body, response);
-  newResponse.headers.set('Cross-Origin-Opener-Policy', 'same-origin');
-  newResponse.headers.set('Cross-Origin-Embedder-Policy', 'require-corp');
-  return newResponse;
-}
+self.addEventListener('fetch', (event) => {
+  event.respondWith(
+    caches.match(event.request).then((response) => {
+      return response || fetch(event.request);
+    })
+  );
+});
