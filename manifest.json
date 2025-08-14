@@ -1,7 +1,7 @@
 {
-  "name": "Preisknaller – Zoom & Slideshow zu WebM",
+  "name": "Preisknaller – Zoom & Slideshow zu MOV",
   "short_name": "Zoom Slideshow",
-  "description": "Erstellt WebM-Videos mit Zoom-Intro und Ken-Burns-Effekt aus Bildern",
+  "description": "Erstellt MOV-Videos mit Zoom-Intro und Ken-Burns-Effekt aus Bildern",
   "start_url": "/Slideshow/",
   "display": "standalone",
   "background_color": "#ffffff",
