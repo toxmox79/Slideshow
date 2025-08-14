@@ -87,7 +87,7 @@
       try {
         if (!ffmpeg.isLoaded()) {
           if (typeof SharedArrayBuffer === 'undefined') {
-            throw new Error('SharedArrayBuffer wird nicht unterstützt. Bitte verwenden Sie einen sicheren Kontext (http://localhost oder https:// mit korrekten Headern: Cross-Origin-Opener-Policy: same-origin, Cross-Origin-Embedder-Policy: require-corp).');
+            throw new Error('SharedArrayBuffer wird nicht unterstützt. Stellen Sie sicher, dass die Seite über HTTPS mit den Headern "Cross-Origin-Opener-Policy: same-origin" und "Cross-Origin-Embedder-Policy: require-corp" geladen wird.');
           }
           await ffmpeg.load();
           document.getElementById('status').textContent = 'FFmpeg geladen.';
