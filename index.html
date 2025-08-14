@@ -5,8 +5,11 @@
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>Preisknaller – Zoom & Slideshow zu MP4</title>
   <link href="https://cdn.jsdelivr.net/npm/tailwindcss@2.2.19/dist/tailwind.min.css" rel="stylesheet">
-  <link rel="manifest" href="manifest.json">
+  <link rel="manifest" href="/Slideshow/manifest.json">
   <meta name="theme-color" content="#ffffff">
+  <meta http-equiv="Cross-Origin-Opener-Policy" content="same-origin">
+  <meta http-equiv="Cross-Origin-Embedder-Policy" content="require-corp">
+  <link rel="icon" href="/Slideshow/favicon.ico" type="image/x-icon">
   <style>
     .preview-img { max-width: 100px; max-height: 100px; object-fit: cover; margin: 5px; }
     .status { white-space: pre-wrap; }
@@ -84,7 +87,7 @@
       try {
         if (!ffmpeg.isLoaded()) {
           if (typeof SharedArrayBuffer === 'undefined') {
-            throw new Error('SharedArrayBuffer wird nicht unterstützt. Bitte verwenden Sie einen sicheren Kontext (http://localhost oder https://).');
+            throw new Error('SharedArrayBuffer wird nicht unterstützt. Bitte verwenden Sie einen sicheren Kontext (http://localhost oder https:// mit korrekten Headern).');
           }
           await ffmpeg.load();
           document.getElementById('status').textContent = 'FFmpeg geladen.';
@@ -218,7 +221,7 @@
     });
 
     if ('serviceWorker' in navigator) {
-      navigator.serviceWorker.register('service-worker.js').catch((e) => {
+      navigator.serviceWorker.register('/Slideshow/service-worker.js').catch((e) => {
         console.error('Service Worker registration failed:', e);
         document.getElementById('status').textContent = 'Service Worker konnte nicht registriert werden. Offline-Modus ist eingeschränkt.';
       });
