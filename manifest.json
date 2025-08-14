@@ -2,18 +2,18 @@
   "name": "Preisknaller – Zoom & Slideshow zu MP4",
   "short_name": "Zoom Slideshow",
   "description": "Erstellt MP4-Videos mit Zoom-Intro und Ken-Burns-Effekt aus Bildern",
-  "start_url": "/index.html",
+  "start_url": "/Slideshow/",
   "display": "standalone",
   "background_color": "#ffffff",
   "theme_color": "#ffffff",
   "icons": [
     {
-      "src": "icon-192x192.png",
+      "src": "/Slideshow/icon-192x192.png",
       "sizes": "192x192",
       "type": "image/png"
     },
     {
-      "src": "icon-512x512.png",
+      "src": "/Slideshow/icon-512x512.png",
       "sizes": "512x512",
       "type": "image/png"
     }
