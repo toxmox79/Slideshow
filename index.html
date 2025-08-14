@@ -56,7 +56,7 @@
     </div>
 
     <div class="mb-4">
-      <p class="font-semibold">Dauer pro Bild: 2s (fix)</p>
+      <p class="font-semibold">Dauer pro Bild: 2s</p>
     </div>
 
     <div class="mb-4">
@@ -92,6 +92,8 @@
       }
       if (!window.MediaRecorder) {
         document.getElementById('status').textContent = 'Fehler: MediaRecorder wird von diesem Browser nicht unterstützt.';
+      } else {
+        document.getElementById('status').textContent = 'Bereit zum Rendern.';
       }
     });
 
@@ -177,7 +179,7 @@
         const framerate = parseInt(document.getElementById('framerate').value);
         const width = parseInt(resolution[0]);
         const height = parseInt(resolution[1]);
-        const durationPerImage = 2;
+        const durationPerImage = 2; // 2 seconds per image
 
         const images = [(introImage || defaultIntroImage), ...additionalImages.map(file => URL.createObjectURL(file))];
         if (images.length === 1 && !introImage) {
@@ -261,27 +263,27 @@
         status.textContent = 'Rendern des Videos...';
         recorder.start();
 
+        const framesPerImage = durationPerImage * framerate;
         for (let i = 0; i < validImages.length; i++) {
           const img = validImages[i];
           const isIntro = i === 0;
-          const zoomStart = isIntro ? 1 : 1;
-          const zoomEnd = isIntro ? 1.2 : 1.05;
-          const frames = durationPerImage * framerate;
-          const zoomStep = (zoomEnd - zoomStart) / frames;
+          const zoomStart = 1.0;
+          const zoomEnd = isIntro ? 1.5 : 1.2; // Stronger zoom for intro
+          const zoomStep = (zoomEnd - zoomStart) / framesPerImage;
 
-          for (let frame = 0; frame < frames; frame++) {
+          for (let frame = 0; frame < framesPerImage; frame++) {
             ctx.clearRect(0, 0, width, height);
             const zoom = zoomStart + frame * zoomStep;
             const imgWidth = img.width * zoom;
             const imgHeight = img.height * zoom;
-            const aspectRatio = imgWidth / imgHeight;
+            const aspectRatio = img.width / img.height;
             let drawWidth, drawHeight;
 
             if (width / height > aspectRatio) {
-              drawHeight = height;
+              drawHeight = height / zoom;
               drawWidth = drawHeight * aspectRatio;
             } else {
-              drawWidth = width;
+              drawWidth = width / zoom;
               drawHeight = drawWidth / aspectRatio;
             }
 
@@ -289,7 +291,7 @@
             const offsetY = (height - drawHeight) / 2;
 
             ctx.drawImage(img, offsetX, offsetY, drawWidth, drawHeight);
-            status.textContent = `Rendern: Bild ${i + 1}, Frame ${frame + 1}/${frames}`;
+            status.textContent = `Rendern: Bild ${i + 1}, Frame ${frame + 1}/${framesPerImage}`;
             await new Promise((resolve) => requestAnimationFrame(resolve));
           }
         }
