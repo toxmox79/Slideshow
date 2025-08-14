@@ -90,6 +90,10 @@
         preview.src = savedIntro;
         preview.classList.remove('hidden');
       }
+      // Check MediaRecorder support
+      if (!window.MediaRecorder) {
+        document.getElementById('status').textContent = 'Fehler: MediaRecorder wird von diesem Browser nicht unterstützt.';
+      }
     });
 
     document.getElementById('installBtn').addEventListener('click', () => {
@@ -116,6 +120,9 @@
           const preview = document.getElementById('introPreview');
           preview.src = introImage;
           preview.classList.remove('hidden');
+        };
+        reader.onerror = () => {
+          document.getElementById('status').textContent = 'Fehler beim Laden des Intro-Bildes.';
         };
         reader.readAsDataURL(file);
       }
@@ -150,6 +157,11 @@
       const status = document.getElementById('status');
       status.textContent = 'Vorbereiten des Videos...';
       try {
+        // Check MediaRecorder support
+        if (!window.MediaRecorder) {
+          throw new Error('MediaRecorder wird von diesem Browser nicht unterstützt.');
+        }
+
         const resolution = document.getElementById('resolution').value.split('x');
         const framerate = parseInt(document.getElementById('framerate').value);
         const width = parseInt(resolution[0]);
@@ -167,13 +179,29 @@
         canvas.width = width;
         canvas.height = height;
         const ctx = canvas.getContext('2d');
+        if (!ctx) {
+          throw new Error('Canvas-Kontext konnte nicht erstellt werden.');
+        }
 
         // Set up MediaRecorder
         const stream = canvas.captureStream(framerate);
+        if (!stream) {
+          throw new Error('Canvas-Stream konnte nicht erstellt werden.');
+        }
         const recordedChunks = [];
-        const recorder = new MediaRecorder(stream, { mimeType: 'video/webm; codecs=vp9' });
+        let mimeType = 'video/webm; codecs=vp9';
+        if (!MediaRecorder.isTypeSupported(mimeType)) {
+          mimeType = 'video/webm';
+          if (!MediaRecorder.isTypeSupported(mimeType)) {
+            throw new Error('Kein unterstütztes WebM-Format verfügbar.');
+          }
+        }
+        const recorder = new MediaRecorder(stream, { mimeType });
         recorder.ondataavailable = (e) => {
-          if (e.data.size > 0) recordedChunks.push(e.data);
+          if (e.data.size > 0) {
+            recordedChunks.push(e.data);
+            status.textContent = `Daten empfangen (${recordedChunks.length} Chunks)...`;
+          }
         };
         recorder.onstop = () => {
           const blob = new Blob(recordedChunks, { type: 'video/webm' });
@@ -184,18 +212,24 @@
           document.getElementById('downloadSection').classList.remove('hidden');
           status.textContent = 'WebM erfolgreich erstellt!';
         };
+        recorder.onerror = (e) => {
+          status.textContent = 'MediaRecorder-Fehler: ' + e.error.message;
+          console.error('MediaRecorder error:', e);
+        };
 
         // Load images
         status.textContent = 'Lade Bilder...';
         const imageObjects = await Promise.all(
-          images.map((src) => {
-            return new Promise((resolve) => {
+          images.map((src, index) => {
+            return new Promise((resolve, reject) => {
               const img = new Image();
               img.src = src;
-              img.onload = () => resolve(img);
+              img.onload = () => {
+                status.textContent = `Bild ${index + 1} geladen.`;
+                resolve(img);
+              };
               img.onerror = () => {
-                status.textContent = 'Fehler beim Laden eines Bildes.';
-                throw new Error('Image loading failed');
+                reject(new Error(`Fehler beim Laden von Bild ${index + 1}`));
               };
             });
           })
@@ -209,7 +243,7 @@
           const img = imageObjects[i];
           const isIntro = i === 0;
           const zoomStart = isIntro ? 1 : 1;
-          const zoomEnd = isIntro ? 1.2 : 1.05; // Stronger zoom for intro
+          const zoomEnd = isIntro ? 1.2 : 1.05;
           const frames = durationPerImage * framerate;
           const zoomStep = (zoomEnd - zoomStart) / frames;
 
@@ -233,14 +267,15 @@
             const offsetY = (height - drawHeight) / 2;
 
             ctx.drawImage(img, offsetX, offsetY, drawWidth, drawHeight);
-            await new Promise((resolve) => setTimeout(resolve, 1000 / framerate));
+            status.textContent = `Rendern: Bild ${i + 1}, Frame ${frame + 1}/${frames}`;
+            await new Promise((resolve) => requestAnimationFrame(resolve));
           }
         }
 
         recorder.stop();
       } catch (e) {
         status.textContent = 'Fehler beim Rendern: ' + e.message;
-        console.error(e);
+        console.error('Render error:', e);
       }
     });
 
