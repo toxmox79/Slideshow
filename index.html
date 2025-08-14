@@ -3,21 +3,20 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>Preisknaller – Zoom & Slideshow zu MP4</title>
+  <title>Preisknaller – Zoom & Slideshow zu WebM</title>
   <link href="https://cdn.jsdelivr.net/npm/tailwindcss@2.2.19/dist/tailwind.min.css" rel="stylesheet">
   <link rel="manifest" href="/Slideshow/manifest.json">
   <meta name="theme-color" content="#ffffff">
-  <meta http-equiv="Cross-Origin-Opener-Policy" content="same-origin">
-  <meta http-equiv="Cross-Origin-Embedder-Policy" content="require-corp">
   <link rel="icon" href="/Slideshow/favicon.ico" type="image/x-icon">
   <style>
     .preview-img { max-width: 100px; max-height: 100px; object-fit: cover; margin: 5px; }
     .status { white-space: pre-wrap; }
+    canvas { display: none; }
   </style>
 </head>
 <body class="bg-gray-100 p-4 font-sans">
   <div class="max-w-md mx-auto bg-white p-6 rounded-lg shadow-md">
-    <h1 class="text-2xl font-bold mb-4">Preisknaller – Zoom & Slideshow zu MP4</h1>
+    <h1 class="text-2xl font-bold mb-4">Preisknaller – Zoom & Slideshow zu WebM</h1>
 
     <div class="mb-4">
       <button id="installBtn" class="bg-blue-500 text-white px-4 py-2 rounded hover:bg-blue-600">App installieren</button>
@@ -61,7 +60,7 @@
     </div>
 
     <div class="mb-4">
-      <button id="renderBtn" class="bg-green-500 text-white px-4 py-2 rounded hover:bg-green-600">MP4 rendern</button>
+      <button id="renderBtn" class="bg-green-500 text-white px-4 py-2 rounded hover:bg-green-600">WebM rendern</button>
       <button id="clearBtn" class="bg-red-500 text-white px-4 py-2 rounded hover:bg-red-600 ml-2">Auswahl leeren</button>
     </div>
 
@@ -71,31 +70,19 @@
     </div>
 
     <div class="mb-4 hidden" id="downloadSection">
-      <a id="downloadLink" class="bg-blue-500 text-white px-4 py-2 rounded hover:bg-blue-600">MP4 herunterladen</a>
+      <a id="downloadLink" class="bg-blue-500 text-white px-4 py-2 rounded hover:bg-blue-600">WebM herunterladen</a>
     </div>
+
+    <canvas id="canvas" style="display: none;"></canvas>
   </div>
 
-  <script src="https://cdn.jsdelivr.net/npm/@ffmpeg/ffmpeg@0.12.10/dist/umd/ffmpeg.min.js"></script>
   <script>
-    // Check if FFmpeg is loaded
-    if (typeof FFmpeg === 'undefined') {
-      document.getElementById('status').textContent = 'Fehler: FFmpeg.wasm konnte nicht geladen werden. Überprüfen Sie Ihre Internetverbindung oder Browser-Einstellungen.';
-      throw new Error('FFmpeg not defined');
-    }
-
-    const { createFFmpeg, fetchFile } = FFmpeg;
-    const ffmpeg = createFFmpeg({ log: true });
     let introImage = null;
     let additionalImages = [];
     const defaultIntroImage = 'data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAACklEQVR4nGMAAQAABQABDQottAAAAABJRU5ErkJggg==';
 
-    // Check SharedArrayBuffer on page load
+    // Load persisted intro image from localStorage
     window.addEventListener('load', () => {
-      if (typeof SharedArrayBuffer === 'undefined') {
-        document.getElementById('status').textContent = 'SharedArrayBuffer nicht verfügbar. Stellen Sie sicher, dass Cloudflare die Header "Cross-Origin-Opener-Policy: same-origin" und "Cross-Origin-Embedder-Policy: require-corp" korrekt setzt.';
-      } else {
-        document.getElementById('status').textContent = 'SharedArrayBuffer verfügbar.';
-      }
       const savedIntro = localStorage.getItem('introImage');
       if (savedIntro) {
         introImage = savedIntro;
@@ -104,22 +91,6 @@
         preview.classList.remove('hidden');
       }
     });
-
-    async function loadFFmpeg() {
-      try {
-        if (!ffmpeg.isLoaded()) {
-          if (typeof SharedArrayBuffer === 'undefined') {
-            throw new Error('SharedArrayBuffer wird nicht unterstützt. Stellen Sie sicher, dass die Seite über HTTPS mit den Headern "Cross-Origin-Opener-Policy: same-origin" und "Cross-Origin-Embedder-Policy: require-corp" geladen wird.');
-          }
-          await ffmpeg.load();
-          document.getElementById('status').textContent = 'FFmpeg geladen.';
-        }
-      } catch (e) {
-        document.getElementById('status').textContent = 'Fehler beim Laden von FFmpeg: ' + e.message;
-        console.error(e);
-        throw e;
-      }
-    }
 
     document.getElementById('installBtn').addEventListener('click', () => {
       if ('BeforeInstallPromptEvent' in window) {
@@ -138,105 +109,4 @@
     document.getElementById('introImage').addEventListener('change', (e) => {
       const file = e.target.files[0];
       if (file) {
-        const reader = new FileReader();
-        reader.onload = () => {
-          introImage = reader.result;
-          localStorage.setItem('introImage', introImage);
-          const preview = document.getElementById('introPreview');
-          preview.src = introImage;
-          preview.classList.remove('hidden');
-        };
-        reader.readAsDataURL(file);
-      }
-    });
-
-    document.getElementById('additionalImages').addEventListener('change', (e) => {
-      additionalImages = Array.from(e.target.files).slice(0, 10);
-      const previews = document.getElementById('imagePreviews');
-      previews.innerHTML = '';
-      additionalImages.forEach((file, index) => {
-        const img = document.createElement('img');
-        img.src = URL.createObjectURL(file);
-        img.classList.add('preview-img');
-        img.alt = `Bild ${index + 1}`;
-        previews.appendChild(img);
-      });
-    });
-
-    document.getElementById('clearBtn').addEventListener('click', () => {
-      introImage = null;
-      additionalImages = [];
-      localStorage.removeItem('introImage');
-      document.getElementById('introImage').value = '';
-      document.getElementById('additionalImages').value = '';
-      document.getElementById('introPreview').classList.add('hidden');
-      document.getElementById('imagePreviews').innerHTML = '';
-      document.getElementById('downloadSection').classList.add('hidden');
-      document.getElementById('status').textContent = 'Auswahl geleert.';
-    });
-
-    document.getElementById('renderBtn').addEventListener('click', async () => {
-      const status = document.getElementById('status');
-      status.textContent = 'Lade FFmpeg...';
-      try {
-        await loadFFmpeg();
-        const resolution = document.getElementById('resolution').value.split('x');
-        const framerate = document.getElementById('framerate').value;
-        const width = resolution[0];
-        const height = resolution[1];
-
-        status.textContent = 'Verarbeite Bilder...';
-        const images = [(introImage || defaultIntroImage), ...additionalImages];
-        if (images.length === 1 && !introImage) {
-          status.textContent = 'Bitte laden Sie mindestens ein Bild hoch.';
-          return;
-        }
-
-        for (let i = 0; i < images.length; i++) {
-          const input = typeof images[i] === 'string' ? images[i] : images[i];
-          ffmpeg.FS('writeFile', `input${i}.png`, await fetchFile(input));
-        }
-
-        const filterComplex = [
-          `[0:v]scale=${width}:${height}:force_original_aspect_ratio=decrease,pad=${width}:${height}:(ow-iw)/2:(oh-ih)/2,zoompan=z='zoom+0.002':d=125:s=${width}x${height}:fps=${framerate}[v0]`,
-          ...images.slice(1).map((_, i) => 
-            `[${i + 1}:v]scale=${width}:${height}:force_original_aspect_ratio=decrease,pad=${width}:${height}:(ow-iw)/2:(oh-ih)/2,zoompan=z='1+0.0005':d=125:s=${width}x${height}:fps=${framerate}[v${i + 1}]`
-          ),
-          `[v0]${images.slice(1).map((_, i) => `[v${i + 1}]`).join('')}concat=n=${images.length}:v=1:a=0[v]`
-        ].join(';');
-
-        status.textContent = 'Kodiere MP4...';
-        await ffmpeg.run(
-          '-i', 'input0.png',
-          ...images.slice(1).map((_, i) => ['-i', `input${i + 1}.png`]).flat(),
-          '-filter_complex', filterComplex,
-          '-map', '[v]',
-          '-c:v', 'libx264',
-          '-pix_fmt', 'yuv420p',
-          '-r', framerate,
-          '-t', (images.length * 2).toString(),
-          'output.mp4'
-        );
-
-        const data = ffmpeg.FS('readFile', 'output.mp4');
-        const url = URL.createObjectURL(new Blob([data.buffer], { type: 'video/mp4' }));
-        const downloadLink = document.getElementById('downloadLink');
-        downloadLink.href = url;
-        downloadLink.download = 'slideshow.mp4';
-        document.getElementById('downloadSection').classList.remove('hidden');
-        status.textContent = 'MP4 erfolgreich erstellt!';
-      } catch (e) {
-        status.textContent = 'Fehler beim Rendern: ' + e.message;
-        console.error(e);
-      }
-    });
-
-    if ('serviceWorker' in navigator) {
-      navigator.serviceWorker.register('/Slideshow/service-worker.js').catch((e) => {
-        console.error('Service Worker registration failed:', e);
-        document.getElementById('status').textContent = 'Service Worker konnte nicht registriert werden. Offline-Modus ist eingeschränkt.';
-      });
-    }
-  </script>
-</body>
-</html>
+        const reader = new FileReader
