@@ -75,7 +75,7 @@
     </div>
   </div>
 
-  <script src="https://cdn.jsdelivr.net/npm/@ffmpeg/ffmpeg@0.11.6/dist/ffmpeg.min.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/@ffmpeg/ffmpeg@0.12.10/dist/umd/ffmpeg.min.js"></script>
   <script>
     const { createFFmpeg, fetchFile } = FFmpeg;
     const ffmpeg = createFFmpeg({ log: true });
@@ -87,7 +87,7 @@
       try {
         if (!ffmpeg.isLoaded()) {
           if (typeof SharedArrayBuffer === 'undefined') {
-            throw new Error('SharedArrayBuffer wird nicht unterstützt. Bitte verwenden Sie einen sicheren Kontext (http://localhost oder https:// mit korrekten Headern).');
+            throw new Error('SharedArrayBuffer wird nicht unterstützt. Bitte verwenden Sie einen sicheren Kontext (http://localhost oder https:// mit korrekten Headern: Cross-Origin-Opener-Policy: same-origin, Cross-Origin-Embedder-Policy: require-corp).');
           }
           await ffmpeg.load();
           document.getElementById('status').textContent = 'FFmpeg geladen.';
